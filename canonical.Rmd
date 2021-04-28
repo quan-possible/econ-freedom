@@ -1,0 +1,182 @@
+---
+title: "Untitled"
+author: "Bruce Nguyen"
+date: "4/9/2021"
+output: html_document
+---
+
+```{r}
+knitr::knit_engines$set(python = reticulate::eng_python)
+```
+
+## Preparation
+
+Here are the libraries that we need.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(GGally)
+library(CCA)
+library(tidyverse)
+library(boot)
+library(car)
+library(ggrepel)
+library(latex2exp)
+library(MVN)
+```
+
+Read the data.
+
+``` {r}
+df <- read.csv("econ-hdi.csv")
+df[1:10,]
+```
+
+```{r}
+summary(df)
+```
+
+
+
+```{r}
+econ <- df[,3:14]
+hdi <- df[,15:18]
+```
+
+
+Measure multicollinearity. This is because it can have an effect on results' interpretation.
+
+```{r}
+lin_reg <- lm(Gross.national.income..GNI..per.capita ~., data = df[,3:18])
+
+car::vif(lin_reg)
+```
+
+## Testing for independence between the 2 sets
+
+* Note: The testing method used here is different from the one that is used in the report.
+
+```{r}
+ind_test <- function(d, i){
+	d2 <- d[i,]
+	econ <- d2[,3:14]
+	hdi <- d2[,15:18]
+	p <- ncol(econ)
+	q <- ncol(hdi)
+	m <- min(p,q)
+	n <- nrow(d2)
+	cc_sample <- cc(econ,hdi)
+	test_stat <- -(n-0.5*(p+q+3))*sum(log(1-cc_sample$cor^2))
+	return(test_stat)
+}
+
+partial_ind_test <- function(d,i) {
+	d2 <- d[i,]
+	econ <- d2[,3:14]
+	hdi <- d2[,15:18]
+	p <- ncol(econ)
+	q <- ncol(hdi)
+	m <- min(p,q)
+	n <- nrow(d2)
+	cc_sample <- cc(econ,hdi)
+	test_stat <- -(n-0.5*(p+q+3))*sum(log(1-cc_sample$cor^2))
+	return(test_stat)
+}
+
+results <- boot(data=df, statistic=ind_test, R=1000)
+quant <- quantile(results$t,c(0.025,0.975))
+(results$t0 > quant[1]) & (results$t0 < quant[2])
+```
+
+## Canonical Correlation Analysis
+
+For detailed analysis, please look at the report.
+
+```{r}
+cc1 <- cc(econ, hdi)
+cc1.cls_ind <- c("X", "Y")[c(rep(1,ncol(econ)),rep(2,ncol(hdi)))]
+cc1.coefs <- as.data.frame(rbind(cc1$xcoef,cc1$ycoef))
+cc1.coefs$Set <- cc1.cls_ind
+cc1.coefs
+```
+
+```{r}
+plot(cc1$cor, type="b", ylab="Value", xlab="Index of Canonical Correlations")
+```
+
+```{r}
+cc1.ycoefs <- as.data.frame(cc1$ycoef)
+
+gg <- ggplot(cc1.ycoefs, aes(x=V1, y=V2)) + 
+  geom_point(size=3) +
+  labs(color='Variables Set') + 
+  labs(title="Canonical Correlation Coefficients for set Y",
+       y=TeX(r'($\beta_2$)'),
+       x=TeX(r'($\beta_1$)')) + 
+  geom_text_repel(aes(label = rownames(cc1.ycoefs)),size=3,alpha=0.5,max.overlaps = 12)
+
+plot(gg)
+ggsave(device='png', filename = "coefY.png",dpi=700)
+```
+
+
+```{r}
+cc1.xcoefs <- as.data.frame(cc1$xcoef)
+
+gg <- ggplot(cc1.xcoefs, aes(x=V1, y=V2)) + 
+  geom_point(size=3) +
+  labs(color='Variables Set') + 
+  labs(title="Canonical Correlation Coefficients for set X",
+       y=TeX(r'($\alpha_2$)'),
+       x=TeX(r'($\alpha_1$)')) + 
+  geom_text_repel(aes(label = rownames(cc1.xcoefs)),size=3,alpha=0.5,max.overlaps = 12)
+
+plot(gg)
+ggsave(device='png', filename = "coefX.png",dpi=700)
+
+```
+
+
+```{r}
+cc1 <- cc(econ, hdi)
+cc1.cls_ind <- c("X", "Y")[c(rep(1,ncol(econ)),rep(2,ncol(hdi)))]
+cc1.uv <- as.data.frame(rbind(cc1$scores$corr.X.xscores,cc1$scores$corr.Y.yscores))
+cc1.uv$Set <- cc1.cls_ind
+cc1.uv
+# dot_col <- c("blue","red")[cc1.cls_ind]
+# legends <- c("Economic Freedom", "HDI Index")[cc1.cls_ind]
+# # plot the coefficients of each X
+# plot(cc1.uv[,1],cc1.uv[,2],pch = 16, col = dot_col, cex = 1.25)
+# text(cc1.uv[,1],cc1.uv[,2], labels=colnames(econ), pos=2, cex=0.7)
+
+gg <- ggplot(cc1.uv, aes(x=V1, y=V2)) + 
+  geom_point(aes(col=Set), size=3) + 
+  labs(color='Variables Set') + 
+  labs(title="Canonical Correlation Variant",
+       y=TeX(r'($u_2$ (for X) and $v_2$ (for Y))') , x=TeX(r'($u_1$ (for X) and $v_1$ (for Y))')) + 
+  geom_text_repel(aes(label = rownames(cc1.uv)),size=3,alpha=0.5,max.overlaps = Inf)
+
+plot(gg)
+ggsave(device='png', filename = "uv.png",dpi=700)
+```
+
+
+
+```{r}
+
+cc1.scores <- as.data.frame(cbind(cc1$scores$xscores[,1],cc1$scores$yscores[,1]))
+
+gg <- ggplot(cc1.scores, aes(x=V1, y=V2)) + 
+  geom_point(aes(col=df[,ncol(df)]), size=2) + 
+  labs(color='Country classification') + 
+  labs(title="Scores (Opposite Sign)",
+       y="Economic Freedom" , x="Human Development") + 
+  geom_text_repel(aes(label = df[,2]),size=3,force=0.1,alpha=0.5,max.overlaps = 5)
+  # geom_text(aes(label=df[,2]),hjust=1, vjust=1, size=3, alpha=0.5)
+
+plot(gg)
+ggsave(device='png', filename = "scores.png",dpi=700)
+```
+
+
