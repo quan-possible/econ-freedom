@@ -1,6 +1,6 @@
 # Investigating the Relationship Between Economic Freedom and Human Development: A Canonical Correlation Analysis
 
-![Country scores](./Documentation/scores.png)
+![picture alt](./Documentation/scores.png)
 
 
 You can read the report here: <https://github.com/quan-possible/econ-freedom/blob/main/Documentation/final.pdf>
